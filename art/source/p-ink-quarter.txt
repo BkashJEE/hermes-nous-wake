@@ -1,0 +1,12 @@
+Use your image_generation tool to create ONE image and save it as ink-quarter.png in the current directory.
+Do not create or modify any other files.
+
+Recreate the attached image EXACTLY: identical framing, crop, size, hair shapes, fringe strands, white gloss streaks,
+headband, face outline, nose and line weights, pixel for pixel wherever possible. Same bold black-and-white manga ink
+style, pure black on pure white, no grey, no colour.
+
+The ONLY change: both eyes only SLIGHTLY open, a quarter of the way: the upper lids are low, showing just a thin dark sliver of iris and pupil under heavy drooping lids, no catchlight yet.
+The eyes stay in exactly the same positions, widths and lash styles as in the attached image.
+
+NO text, no letters, no logo, no watermark, no border.
+Landscape image, 1536x1024.

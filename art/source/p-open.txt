@@ -1,0 +1,20 @@
+Use your image_generation tool to create ONE image and save it as wake-open.png in the current directory.
+Do not create or modify any other files.
+
+SUBJECT: an extreme close-up portrait of the attached character, the Nous Research girl: same identity as the reference
+(straight jet-black hair with a heavy blunt fringe/bangs just above the eyebrows, a thin white headband, soft rounded
+youthful anime-inspired face, small nose, big expressive eyes). Keep her recognisable as the same character.
+
+FRAMING: the face fills the whole frame, cropped like a wallpaper close-up: the top of the frame cuts through the fringe,
+the bottom cuts just under the nose / upper lip. Both eyes large and centred horizontally across the frame, level, looking
+straight at the viewer. Her face is symmetric and front-on (not the 3/4 profile of the reference) so both eyes are fully visible.
+
+EYES: wide open, bright and alive, irises a luminous Nous blue (#2f6bff to #7fb0ff) with fine radial detail and a crisp
+white catchlight in each, long dark lashes.
+
+RENDER: a rich hand-painted digital painting with visible soft brushwork, warm skin with faint freckles, cinematic light:
+a soft cool blue rim from the left and a warm window light falling across the face in two soft diagonal stripes, deep
+shadows around the eyes. Painterly and premium, like a striking desktop wallpaper. Not photographic, not flat cel shading.
+
+NO text, no letters, no logo, no watermark, no border.
+Landscape image, 1536x1024.

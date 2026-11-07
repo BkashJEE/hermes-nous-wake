@@ -1,0 +1,15 @@
+Use your image_generation tool to create ONE image and save it as ink-open.png in the current directory.
+Do not create or modify any other files.
+
+STYLE: match the attached reference EXACTLY in style: the official Nous Research girl, a bold black-and-white
+retro manga ink drawing. Pure black ink on pure white, solid black hair masses with sharp white gloss streaks,
+crisp clean brush/vector line work, high contrast, no grey shading, no colour, no gradients, no halftone noise.
+Same character: straight jet-black hair with a heavy blunt fringe, thin white headband, soft youthful face,
+big retro-manga eyes with heavy upper lash lines.
+
+FRAMING: an extreme close-up of her face that fills the whole frame like a wallpaper: the top edge cuts through the
+fringe, the bottom edge cuts just under the nose. Face front-on and symmetric so BOTH eyes are fully visible, large,
+level and centred across the frame, looking straight at the viewer, wide open, each pupil with a white catchlight.
+
+NO text, no letters, no logo, no watermark, no border.
+Landscape image, 1536x1024.
