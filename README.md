@@ -2,8 +2,8 @@
 
 **The Nous girl wakes up every time you start a new Hermes chat.**
 
-A three-second moment in Hermes Desktop: an old CRT switches on, the Nous girl fills the screen with her eyes
-closed, her lids lift in five steps until she's looking right at you, and the tube switches off into your new chat.
+A three-second moment inside the chat window of Hermes Desktop (the sidebar and tabs stay put): an old CRT switches
+on, the Nous girl fills the chat with her eyes closed, her lids lift in five steps until she's looking right at you, and the tube switches off into your new chat.
 It's drawn in the black-and-white Nous manga ink style.
 
 ![Nous Wake](docs/nous-wake.gif)
@@ -33,7 +33,9 @@ Desktop only: no tools, no network calls, no model calls. `hermes plugins valida
 - `desktop/plugin.src.js` is the source; `python3 build.py` writes `desktop/plugin.js` with the frames inlined as data
   URIs, because Desktop loads `plugin.js` on its own and can't fetch files next to it.
 - New chats come from `host.state.activeSessionId`: a fresh chat draft sets it to empty.
-- The full-window moment is the SDK's own `Dialog`, so the plugin never touches the app's markup.
+- The wake sits in the composer's official top slot, which lives inside each chat window. From there it reads that
+  window's box through the documented `[data-chat-surface]` hook (the one themes use) and draws exactly over it,
+  so split tiles each get their own wake. With no chat on screen (Settings, say) a replay uses the SDK's `Dialog`.
 - The CRT look is plain CSS (`desktop/crt.css`) plus an SVG colour-split filter.
 
 ## Artwork

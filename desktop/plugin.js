@@ -6,10 +6,13 @@
 // Trigger: host.state.activeSessionId. A fresh chat draft (sidebar New Session, the session.new keybind,
 // the palette) sets it to null; so does a cold start on the new-chat screen. We play when it goes from a
 // session to null, and once at launch when it starts null.
-// Surface: an SDK Dialog (no app-markup reaching, catalog rule 8), a status-bar eye that replays it,
-// a ⌘K command, and Settings ▸ Plugins ▸ Nous Wake.
+// Surface: the wake plays inside the work window only (the chat surface, not the sidebar). A COMPOSER_AREAS.top
+// slot lives inside every chat surface; from there we read the surface's box (the documented [data-chat-surface]
+// hook, the same one themes target) and draw a fixed overlay exactly over it. With no chat surface on screen
+// (a settings page, say) a replay falls back to a full-window SDK Dialog. Plus a status-bar eye, a ⌘K command,
+// and Settings ▸ Plugins ▸ Nous Wake.
 
-import { atom, Dialog, DialogContent, DialogTitle, host, ListRow, PALETTE_AREA, SegmentedControl, STATUSBAR_AREAS, Tip, useValue } from '@hermes/plugin-sdk'
+import { atom, COMPOSER_AREAS, Dialog, DialogContent, DialogTitle, host, ListRow, PALETTE_AREA, SegmentedControl, STATUSBAR_AREAS, Tip, useValue } from '@hermes/plugin-sdk'
 import { useEffect, useRef, useState } from 'react'
 import { jsx, jsxs } from 'react/jsx-runtime'
 
@@ -28,8 +31,25 @@ const CALM_OFF_AT = 900, CALM_DONE_AT = 1300   // prefers-reduced-motion: fade i
 const DEFAULTS = { mode: 'every' }   // every | daily | launch | off
 const prefs = atom({ ...DEFAULTS })
 let storage = null
-const playing = atom(false)          // module level: the status-bar item can remount without losing a wake in progress
-const play = () => playing.set(true)
+// Module level, so components can remount without losing a wake in progress.
+const playing = atom(false)          // a wake is running
+const playingIn = atom(null)         // id of the chat surface it runs in; null = full-window fallback
+const surfaces = new Map()           // id -> () => HTMLElement | null, one per mounted composer slot
+let nextId = 1
+
+function pickSurface() {
+  const live = [...surfaces.entries()].map(([id, get]) => [id, get()]).filter(([, el]) => el && el.getBoundingClientRect().width > 0)
+  const focused = live.find(([, el]) => el.contains(document.activeElement))
+  return (focused || live[0] || [null])[0]
+}
+
+function play() {
+  if (playing.get()) return
+  // Wait a beat: a fresh chat mounts its composer (and focuses it) right after the session changes.
+  // A timer, not requestAnimationFrame, so it still fires when the window is in the background.
+  setTimeout(() => { playingIn.set(pickSurface()); playing.set(true) }, 80)
+}
+const stopWake = () => { playing.set(false); playingIn.set(null) }
 
 function update(patch) {
   prefs.set({ ...prefs.get(), ...patch })
@@ -60,7 +80,7 @@ const reduceMotion = () => {
   try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches } catch { return false }
 }
 
-const CSS = "/* Nous Wake: the CRT look. Inlined into desktop/plugin.js and docs/preview by build.py. */\n.nw-stage{position:fixed;inset:0;background:#000;overflow:hidden;cursor:pointer}\n/* the tube: everything that switches on and off */\n.nw-tube{position:absolute;inset:0;transform-origin:50% 50%;\n  animation:nw-on .26s cubic-bezier(.2,.9,.3,1) both, nw-flicker .12s steps(2) .3s infinite}\n.nw-stage.nw-off .nw-tube{animation:nw-off .38s cubic-bezier(.6,0,.9,.4) forwards}\n@keyframes nw-on{0%{transform:scale(1.02,.004);filter:brightness(6)}55%{transform:scale(1.02,.05);filter:brightness(4)}100%{transform:scale(1,1);filter:brightness(1)}}\n@keyframes nw-off{0%{transform:scale(1,1);filter:brightness(1)}55%{transform:scale(1.02,.006);filter:brightness(5)}100%{transform:scale(0,.004);filter:brightness(8)}}\n@keyframes nw-flicker{0%{opacity:1}50%{opacity:.965}}\n/* the picture: ink frames with an RGB split, a slow push-in and a blue phosphor tint */\n.nw-pic{position:absolute;inset:-2%;filter:url(#nw-rgb) contrast(1.08);transform:scale(1.07);\n  transition:transform 2.6s cubic-bezier(.2,.7,.2,1)}\n.nw-stage.nw-go .nw-pic{transform:scale(1)}\n.nw-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0}\n.nw-img.nw-on{opacity:1}\n.nw-tint{position:absolute;inset:0;background:#3c78ff;mix-blend-mode:multiply;opacity:.16}\n.nw-glow{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 45%,rgba(120,170,255,.22),transparent 65%);mix-blend-mode:screen}\n/* scanlines, a rolling bar, static at switch-on, the curved glass and its vignette */\n.nw-scan{position:absolute;inset:0;pointer-events:none;\n  background:repeating-linear-gradient(to bottom,rgba(0,0,0,.34) 0 1px,transparent 1px 3px);mix-blend-mode:multiply}\n.nw-roll{position:absolute;left:0;right:0;height:22%;top:-22%;pointer-events:none;\n  background:linear-gradient(to bottom,transparent,rgba(160,200,255,.10),transparent);animation:nw-roll 2.2s linear .2s infinite}\n@keyframes nw-roll{to{top:100%}}\n.nw-static{position:absolute;inset:-50%;pointer-events:none;opacity:0;mix-blend-mode:screen;\n  background:repeating-radial-gradient(circle at 37% 61%,rgba(255,255,255,.55) 0 1px,transparent 1px 3px),\n             repeating-radial-gradient(circle at 71% 23%,rgba(255,255,255,.45) 0 1px,transparent 1px 2px);\n  animation:nw-static .45s steps(6) both}\n@keyframes nw-static{0%{opacity:.9;transform:translate(0,0)}33%{transform:translate(-3%,2%)}66%{transform:translate(2%,-3%)}100%{opacity:0;transform:translate(1%,1%)}}\n.nw-glass{position:absolute;inset:0;pointer-events:none;border-radius:3.5%/5%;\n  box-shadow:inset 0 0 120px 40px rgba(0,0,0,.85),inset 0 0 0 2px rgba(0,0,0,.9);\n  background:radial-gradient(ellipse at 30% 18%,rgba(255,255,255,.07),transparent 40%)}\n.nw-skip{position:absolute;right:28px;bottom:24px;font:500 12px/1 ui-monospace,monospace;letter-spacing:.14em;\n  color:rgba(170,200,255,.6);text-transform:uppercase;text-shadow:0 0 6px rgba(80,140,255,.8)}\n.nw-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}\n/* reduced motion: no switch-on, flicker, roll or static; just a soft fade */\n.nw-stage.nw-calm .nw-tube{animation:nw-fade .4s ease both}\n.nw-stage.nw-calm.nw-off .nw-tube{animation:nw-fade .4s ease reverse forwards}\n.nw-stage.nw-calm .nw-roll,.nw-stage.nw-calm .nw-static{display:none}\n@keyframes nw-fade{from{opacity:0}to{opacity:1}}\n"
+const CSS = "/* Nous Wake: the CRT look. Inlined into desktop/plugin.js and docs/preview by build.py. */\n.nw-stage{position:absolute;inset:0;background:#000;overflow:hidden;cursor:pointer}\n/* the tube: everything that switches on and off */\n.nw-tube{position:absolute;inset:0;transform-origin:50% 50%;\n  animation:nw-on .26s cubic-bezier(.2,.9,.3,1) both, nw-flicker .12s steps(2) .3s infinite}\n.nw-stage.nw-off .nw-tube{animation:nw-off .38s cubic-bezier(.6,0,.9,.4) forwards}\n@keyframes nw-on{0%{transform:scale(1.02,.004);filter:brightness(6)}55%{transform:scale(1.02,.05);filter:brightness(4)}100%{transform:scale(1,1);filter:brightness(1)}}\n@keyframes nw-off{0%{transform:scale(1,1);filter:brightness(1)}55%{transform:scale(1.02,.006);filter:brightness(5)}100%{transform:scale(0,.004);filter:brightness(8)}}\n@keyframes nw-flicker{0%{opacity:1}50%{opacity:.965}}\n/* the picture: ink frames with an RGB split, a slow push-in and a blue phosphor tint */\n.nw-pic{position:absolute;inset:-2%;filter:url(#nw-rgb) contrast(1.08);transform:scale(1.07);\n  transition:transform 2.6s cubic-bezier(.2,.7,.2,1)}\n.nw-stage.nw-go .nw-pic{transform:scale(1)}\n.nw-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0}\n.nw-img.nw-on{opacity:1}\n.nw-tint{position:absolute;inset:0;background:#3c78ff;mix-blend-mode:multiply;opacity:.16}\n.nw-glow{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 45%,rgba(120,170,255,.22),transparent 65%);mix-blend-mode:screen}\n/* scanlines, a rolling bar, static at switch-on, the curved glass and its vignette */\n.nw-scan{position:absolute;inset:0;pointer-events:none;\n  background:repeating-linear-gradient(to bottom,rgba(0,0,0,.34) 0 1px,transparent 1px 3px);mix-blend-mode:multiply}\n.nw-roll{position:absolute;left:0;right:0;height:22%;top:-22%;pointer-events:none;\n  background:linear-gradient(to bottom,transparent,rgba(160,200,255,.10),transparent);animation:nw-roll 2.2s linear .2s infinite}\n@keyframes nw-roll{to{top:100%}}\n.nw-static{position:absolute;inset:-50%;pointer-events:none;opacity:0;mix-blend-mode:screen;\n  background:repeating-radial-gradient(circle at 37% 61%,rgba(255,255,255,.55) 0 1px,transparent 1px 3px),\n             repeating-radial-gradient(circle at 71% 23%,rgba(255,255,255,.45) 0 1px,transparent 1px 2px);\n  animation:nw-static .45s steps(6) both}\n@keyframes nw-static{0%{opacity:.9;transform:translate(0,0)}33%{transform:translate(-3%,2%)}66%{transform:translate(2%,-3%)}100%{opacity:0;transform:translate(1%,1%)}}\n.nw-glass{position:absolute;inset:0;pointer-events:none;border-radius:3.5%/5%;\n  box-shadow:inset 0 0 120px 40px rgba(0,0,0,.85),inset 0 0 0 2px rgba(0,0,0,.9);\n  background:radial-gradient(ellipse at 30% 18%,rgba(255,255,255,.07),transparent 40%)}\n.nw-skip{position:absolute;right:28px;bottom:24px;font:500 12px/1 ui-monospace,monospace;letter-spacing:.14em;\n  color:rgba(170,200,255,.6);text-transform:uppercase;text-shadow:0 0 6px rgba(80,140,255,.8)}\n.nw-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}\n/* reduced motion: no switch-on, flicker, roll or static; just a soft fade */\n.nw-stage.nw-calm .nw-tube{animation:nw-fade .4s ease both}\n.nw-stage.nw-calm.nw-off .nw-tube{animation:nw-fade .4s ease reverse forwards}\n.nw-stage.nw-calm .nw-roll,.nw-stage.nw-calm .nw-static{display:none}\n@keyframes nw-fade{from{opacity:0}to{opacity:1}}\n"
 
 // The RGB split: red shifted right, blue left, green in place, screened back together.
 function RgbFilter() {
@@ -82,12 +102,12 @@ function Wake({ onDone }) {
   useEffect(() => {
     const t = []
     if (!calm) STEPS.forEach(([, at], i) => t.push(setTimeout(() => setStep(i + 1), at)))
-    const raf = requestAnimationFrame(() => requestAnimationFrame(() => setGo(true)))
+    const goTimer = setTimeout(() => setGo(true), 30)
     t.push(setTimeout(() => setOff(true), calm ? CALM_OFF_AT : OFF_AT))
     t.push(setTimeout(onDone, calm ? CALM_DONE_AT : DONE_AT))
     const skip = () => onDone()
     window.addEventListener('keydown', skip, { once: true })
-    return () => { t.forEach(clearTimeout); cancelAnimationFrame(raf); window.removeEventListener('keydown', skip) }
+    return () => { t.forEach(clearTimeout); clearTimeout(goTimer); window.removeEventListener('keydown', skip) }
   }, [])
 
   const img = (f, on, ms) => jsx('img', { alt: '', draggable: false, src: FRAMES[f], className: `nw-img${on ? ' nw-on' : ''}`, style: { transition: `opacity ${ms}ms ease-in-out` } })
@@ -116,7 +136,8 @@ function Wake({ onDone }) {
 
 // Lives in the status bar: the replay eye and the full-window dialog. New-chat detection is in watch(), not here.
 function Watcher() {
-  const isPlaying = useValue(playing)
+  const on = useValue(playing), where = useValue(playingIn)
+  const isPlaying = on && where == null   // full-window fallback only
   return jsxs('span', {
     style: { display: 'inline-flex', alignItems: 'center' },
     children: [
@@ -132,7 +153,7 @@ function Watcher() {
       }),
       jsx(Dialog, {
         open: isPlaying,
-        onOpenChange: v => { if (!v) playing.set(false) },
+        onOpenChange: v => { if (!v) stopWake() },
         children: jsxs(DialogContent, {
           showCloseButton: false,
           'aria-describedby': undefined,
@@ -145,11 +166,61 @@ function Watcher() {
           style: { position: 'fixed', inset: 0, width: '100vw', height: '100vh', maxWidth: 'none', maxHeight: 'none', transform: 'none', translate: 'none', padding: 0, border: 0, borderRadius: 0, background: '#000', boxShadow: 'none' },
           children: [
             jsx(DialogTitle, { className: 'nw-sr', children: 'Nous girl waking up' }),
-            isPlaying ? jsx(Wake, { onDone: () => playing.set(false) }) : null,
+            isPlaying ? jsx(Wake, { onDone: stopWake }) : null,
           ],
         }),
       }),
     ],
+  })
+}
+
+// Inside each chat surface (composer top slot): draws the wake over exactly that surface.
+function SurfaceWake() {
+  const anchor = useRef(null)
+  const id = useRef(0)
+  if (!id.current) id.current = nextId++
+  const where = useValue(playingIn), on = useValue(playing)
+  const mine = on && where === id.current
+  const [box, setBox] = useState(null)
+  const [shift, setShift] = useState([0, 0])   // an ancestor with a filter/transform moves what 'fixed' is relative to
+  const overlay = useRef(null)
+
+  useEffect(() => {
+    const me = id.current
+    surfaces.set(me, () => anchor.current?.closest('[data-chat-surface]') || null)
+    return () => { surfaces.delete(me); if (playingIn.get() === me) stopWake() }
+  }, [])
+
+  useEffect(() => {
+    if (!mine) return
+    const el = surfaces.get(id.current)?.()
+    if (!el) { stopWake(); return }
+    const measure = () => { const r = el.getBoundingClientRect(); setBox({ left: r.left, top: r.top, width: r.width, height: r.height }) }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    window.addEventListener('resize', measure)
+    return () => { ro.disconnect(); window.removeEventListener('resize', measure) }
+  }, [mine])
+
+  // After it paints, compare where the overlay landed with the surface and correct by the difference.
+  useEffect(() => {
+    if (!mine || !box || !overlay.current) return
+    const r = overlay.current.getBoundingClientRect()
+    const dx = box.left - r.left, dy = box.top - r.top
+    if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) setShift(([x, y]) => [x + dx, y + dy])
+  }, [mine, box])
+  useEffect(() => { if (!mine) setShift([0, 0]) }, [mine])
+
+  return jsxs('span', {
+    ref: anchor,
+    style: { display: 'contents' },
+    children: mine && box ? jsx('div', {
+      role: 'presentation',
+      ref: overlay,
+      style: { position: 'fixed', left: box.left + shift[0], top: box.top + shift[1], width: box.width, height: box.height, zIndex: 40, overflow: 'hidden', borderRadius: 'inherit' },
+      children: jsx(Wake, { onDone: stopWake }),
+    }) : null,
   })
 }
 
@@ -209,6 +280,7 @@ export default {
     prefs.set({ ...DEFAULTS, ...ctx.storage.get('prefs', {}) })
     preload()
     watch(ctx)
+    ctx.register({ id: 'surface', area: COMPOSER_AREAS.top, render: () => jsx(SurfaceWake, {}) })
     ctx.register({ id: 'watcher', area: STATUSBAR_AREAS.right, order: 140, render: () => jsx(Watcher, {}) })
     ctx.register({
       id: 'replay', area: PALETTE_AREA,

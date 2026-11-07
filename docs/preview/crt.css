@@ -1,5 +1,5 @@
 /* Nous Wake: the CRT look. Inlined into desktop/plugin.js and docs/preview by build.py. */
-.nw-stage{position:fixed;inset:0;background:#000;overflow:hidden;cursor:pointer}
+.nw-stage{position:absolute;inset:0;background:#000;overflow:hidden;cursor:pointer}
 /* the tube: everything that switches on and off */
 .nw-tube{position:absolute;inset:0;transform-origin:50% 50%;
   animation:nw-on .26s cubic-bezier(.2,.9,.3,1) both, nw-flicker .12s steps(2) .3s infinite}

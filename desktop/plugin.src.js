@@ -6,10 +6,13 @@
 // Trigger: host.state.activeSessionId. A fresh chat draft (sidebar New Session, the session.new keybind,
 // the palette) sets it to null; so does a cold start on the new-chat screen. We play when it goes from a
 // session to null, and once at launch when it starts null.
-// Surface: an SDK Dialog (no app-markup reaching, catalog rule 8), a status-bar eye that replays it,
-// a ⌘K command, and Settings ▸ Plugins ▸ Nous Wake.
+// Surface: the wake plays inside the work window only (the chat surface, not the sidebar). A COMPOSER_AREAS.top
+// slot lives inside every chat surface; from there we read the surface's box (the documented [data-chat-surface]
+// hook, the same one themes target) and draw a fixed overlay exactly over it. With no chat surface on screen
+// (a settings page, say) a replay falls back to a full-window SDK Dialog. Plus a status-bar eye, a ⌘K command,
+// and Settings ▸ Plugins ▸ Nous Wake.
 
-import { atom, Dialog, DialogContent, DialogTitle, host, ListRow, PALETTE_AREA, SegmentedControl, STATUSBAR_AREAS, Tip, useValue } from '@hermes/plugin-sdk'
+import { atom, COMPOSER_AREAS, Dialog, DialogContent, DialogTitle, host, ListRow, PALETTE_AREA, SegmentedControl, STATUSBAR_AREAS, Tip, useValue } from '@hermes/plugin-sdk'
 import { useEffect, useRef, useState } from 'react'
 import { jsx, jsxs } from 'react/jsx-runtime'
 
@@ -28,8 +31,25 @@ const CALM_OFF_AT = 900, CALM_DONE_AT = 1300   // prefers-reduced-motion: fade i
 const DEFAULTS = { mode: 'every' }   // every | daily | launch | off
 const prefs = atom({ ...DEFAULTS })
 let storage = null
-const playing = atom(false)          // module level: the status-bar item can remount without losing a wake in progress
-const play = () => playing.set(true)
+// Module level, so components can remount without losing a wake in progress.
+const playing = atom(false)          // a wake is running
+const playingIn = atom(null)         // id of the chat surface it runs in; null = full-window fallback
+const surfaces = new Map()           // id -> () => HTMLElement | null, one per mounted composer slot
+let nextId = 1
+
+function pickSurface() {
+  const live = [...surfaces.entries()].map(([id, get]) => [id, get()]).filter(([, el]) => el && el.getBoundingClientRect().width > 0)
+  const focused = live.find(([, el]) => el.contains(document.activeElement))
+  return (focused || live[0] || [null])[0]
+}
+
+function play() {
+  if (playing.get()) return
+  // Wait a beat: a fresh chat mounts its composer (and focuses it) right after the session changes.
+  // A timer, not requestAnimationFrame, so it still fires when the window is in the background.
+  setTimeout(() => { playingIn.set(pickSurface()); playing.set(true) }, 80)
+}
+const stopWake = () => { playing.set(false); playingIn.set(null) }
 
 function update(patch) {
   prefs.set({ ...prefs.get(), ...patch })
@@ -82,12 +102,12 @@ function Wake({ onDone }) {
   useEffect(() => {
     const t = []
     if (!calm) STEPS.forEach(([, at], i) => t.push(setTimeout(() => setStep(i + 1), at)))
-    const raf = requestAnimationFrame(() => requestAnimationFrame(() => setGo(true)))
+    const goTimer = setTimeout(() => setGo(true), 30)
     t.push(setTimeout(() => setOff(true), calm ? CALM_OFF_AT : OFF_AT))
     t.push(setTimeout(onDone, calm ? CALM_DONE_AT : DONE_AT))
     const skip = () => onDone()
     window.addEventListener('keydown', skip, { once: true })
-    return () => { t.forEach(clearTimeout); cancelAnimationFrame(raf); window.removeEventListener('keydown', skip) }
+    return () => { t.forEach(clearTimeout); clearTimeout(goTimer); window.removeEventListener('keydown', skip) }
   }, [])
 
   const img = (f, on, ms) => jsx('img', { alt: '', draggable: false, src: FRAMES[f], className: `nw-img${on ? ' nw-on' : ''}`, style: { transition: `opacity ${ms}ms ease-in-out` } })
@@ -116,7 +136,8 @@ function Wake({ onDone }) {
 
 // Lives in the status bar: the replay eye and the full-window dialog. New-chat detection is in watch(), not here.
 function Watcher() {
-  const isPlaying = useValue(playing)
+  const on = useValue(playing), where = useValue(playingIn)
+  const isPlaying = on && where == null   // full-window fallback only
   return jsxs('span', {
     style: { display: 'inline-flex', alignItems: 'center' },
     children: [
@@ -132,7 +153,7 @@ function Watcher() {
       }),
       jsx(Dialog, {
         open: isPlaying,
-        onOpenChange: v => { if (!v) playing.set(false) },
+        onOpenChange: v => { if (!v) stopWake() },
         children: jsxs(DialogContent, {
           showCloseButton: false,
           'aria-describedby': undefined,
@@ -145,11 +166,61 @@ function Watcher() {
           style: { position: 'fixed', inset: 0, width: '100vw', height: '100vh', maxWidth: 'none', maxHeight: 'none', transform: 'none', translate: 'none', padding: 0, border: 0, borderRadius: 0, background: '#000', boxShadow: 'none' },
           children: [
             jsx(DialogTitle, { className: 'nw-sr', children: 'Nous girl waking up' }),
-            isPlaying ? jsx(Wake, { onDone: () => playing.set(false) }) : null,
+            isPlaying ? jsx(Wake, { onDone: stopWake }) : null,
           ],
         }),
       }),
     ],
+  })
+}
+
+// Inside each chat surface (composer top slot): draws the wake over exactly that surface.
+function SurfaceWake() {
+  const anchor = useRef(null)
+  const id = useRef(0)
+  if (!id.current) id.current = nextId++
+  const where = useValue(playingIn), on = useValue(playing)
+  const mine = on && where === id.current
+  const [box, setBox] = useState(null)
+  const [shift, setShift] = useState([0, 0])   // an ancestor with a filter/transform moves what 'fixed' is relative to
+  const overlay = useRef(null)
+
+  useEffect(() => {
+    const me = id.current
+    surfaces.set(me, () => anchor.current?.closest('[data-chat-surface]') || null)
+    return () => { surfaces.delete(me); if (playingIn.get() === me) stopWake() }
+  }, [])
+
+  useEffect(() => {
+    if (!mine) return
+    const el = surfaces.get(id.current)?.()
+    if (!el) { stopWake(); return }
+    const measure = () => { const r = el.getBoundingClientRect(); setBox({ left: r.left, top: r.top, width: r.width, height: r.height }) }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    window.addEventListener('resize', measure)
+    return () => { ro.disconnect(); window.removeEventListener('resize', measure) }
+  }, [mine])
+
+  // After it paints, compare where the overlay landed with the surface and correct by the difference.
+  useEffect(() => {
+    if (!mine || !box || !overlay.current) return
+    const r = overlay.current.getBoundingClientRect()
+    const dx = box.left - r.left, dy = box.top - r.top
+    if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) setShift(([x, y]) => [x + dx, y + dy])
+  }, [mine, box])
+  useEffect(() => { if (!mine) setShift([0, 0]) }, [mine])
+
+  return jsxs('span', {
+    ref: anchor,
+    style: { display: 'contents' },
+    children: mine && box ? jsx('div', {
+      role: 'presentation',
+      ref: overlay,
+      style: { position: 'fixed', left: box.left + shift[0], top: box.top + shift[1], width: box.width, height: box.height, zIndex: 40, overflow: 'hidden', borderRadius: 'inherit' },
+      children: jsx(Wake, { onDone: stopWake }),
+    }) : null,
   })
 }
 
@@ -209,6 +280,7 @@ export default {
     prefs.set({ ...DEFAULTS, ...ctx.storage.get('prefs', {}) })
     preload()
     watch(ctx)
+    ctx.register({ id: 'surface', area: COMPOSER_AREAS.top, render: () => jsx(SurfaceWake, {}) })
     ctx.register({ id: 'watcher', area: STATUSBAR_AREAS.right, order: 140, render: () => jsx(Watcher, {}) })
     ctx.register({
       id: 'replay', area: PALETTE_AREA,
