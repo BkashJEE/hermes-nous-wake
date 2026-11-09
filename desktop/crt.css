@@ -1,7 +1,9 @@
 /* Nous Wake: the CRT look. Inlined into desktop/plugin.js and docs/preview by build.py. */
-.nw-stage{position:absolute;inset:0;background:#000;overflow:hidden;cursor:pointer}
+/* translucent: the chat window shows through, so she blends into the room instead of blacking it out */
+.nw-stage{position:absolute;inset:0;background:transparent;overflow:hidden;cursor:pointer}
 /* the tube: everything that switches on and off */
 .nw-tube{position:absolute;inset:0;transform-origin:50% 50%;
+  -webkit-mask-image:radial-gradient(ellipse 72% 70% at 50% 48%,#000 58%,transparent 100%);mask-image:radial-gradient(ellipse 72% 70% at 50% 48%,#000 58%,transparent 100%);
   animation:nw-on .26s cubic-bezier(.2,.9,.3,1) both, nw-flicker .12s steps(2) .3s infinite}
 .nw-stage.nw-off .nw-tube{animation:nw-off .38s cubic-bezier(.6,0,.9,.4) forwards}
 @keyframes nw-on{0%{transform:scale(1.02,.004);filter:brightness(6)}55%{transform:scale(1.02,.05);filter:brightness(4)}100%{transform:scale(1,1);filter:brightness(1)}}
@@ -12,7 +14,7 @@
   transition:transform 2.6s cubic-bezier(.2,.7,.2,1)}
 .nw-stage.nw-go .nw-pic{transform:scale(1)}
 .nw-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0}
-.nw-img.nw-on{opacity:1}
+.nw-img.nw-on{opacity:.94}
 .nw-tint{position:absolute;inset:0;background:#3c78ff;mix-blend-mode:multiply;opacity:.16}
 .nw-glow{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 45%,rgba(120,170,255,.22),transparent 65%);mix-blend-mode:screen}
 /* scanlines, a rolling bar, static at switch-on, the curved glass and its vignette */
@@ -27,7 +29,7 @@
   animation:nw-static .45s steps(6) both}
 @keyframes nw-static{0%{opacity:.9;transform:translate(0,0)}33%{transform:translate(-3%,2%)}66%{transform:translate(2%,-3%)}100%{opacity:0;transform:translate(1%,1%)}}
 .nw-glass{position:absolute;inset:0;pointer-events:none;border-radius:3.5%/5%;
-  box-shadow:inset 0 0 120px 40px rgba(0,0,0,.85),inset 0 0 0 2px rgba(0,0,0,.9);
+  box-shadow:inset 0 0 120px 40px rgba(0,0,0,.6),inset 0 0 0 2px rgba(0,0,0,.7);
   background:radial-gradient(ellipse at 30% 18%,rgba(255,255,255,.07),transparent 40%)}
 .nw-skip{position:absolute;right:28px;bottom:24px;font:500 12px/1 ui-monospace,monospace;letter-spacing:.14em;
   color:rgba(170,200,255,.6);text-transform:uppercase;text-shadow:0 0 6px rgba(80,140,255,.8)}
