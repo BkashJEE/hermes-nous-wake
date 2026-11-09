@@ -8,8 +8,9 @@
 // session to null, and once at launch when it starts null.
 // Surface: the wake plays inside the work window only (the chat surface, not the sidebar). A COMPOSER_AREAS.top
 // slot lives inside every chat surface; from there we read the surface's box (the documented [data-chat-surface]
-// hook, the same one themes target) and draw a fixed overlay exactly over it. With no chat surface on screen
-// (a settings page, say) a replay falls back to a full-window SDK Dialog. Plus a status-bar eye, a ⌘K command,
+// hook, the same one themes target) and draw a fixed overlay exactly over it. A new chat waits for its surface
+// to mount and never covers the sidebar or the whole app. Only a manual replay with no chat surface on screen
+// (a settings page, say) falls back to a full-window SDK Dialog. Plus a status-bar eye, a ⌘K command,
 // and Settings ▸ Plugins ▸ Nous Wake.
 
 import { atom, COMPOSER_AREAS, Dialog, DialogContent, DialogTitle, host, ListRow, PALETTE_AREA, SegmentedControl, STATUSBAR_AREAS, Tip, useValue } from '@hermes/plugin-sdk'
@@ -43,12 +44,29 @@ function pickSurface() {
   return (focused || live[0] || [null])[0]
 }
 
-function play() {
+let pendingAuto = false              // a new chat asked for a wake before its surface mounted; the surface claims it
+
+function startIn(id) { pendingAuto = false; playingIn.set(id); playing.set(true) }
+
+// manual = the status-bar eye, the palette or Settings. An automatic wake (new chat) plays only inside the chat
+// surface: it waits for the surface to mount and never covers the whole app. A manual replay with no chat on
+// screen (a settings page, say) falls back to the full-window dialog.
+function start(manual) {
   if (playing.get()) return
-  // Wait a beat: a fresh chat mounts its composer (and focuses it) right after the session changes.
-  // A timer, not requestAnimationFrame, so it still fires when the window is in the background.
-  setTimeout(() => { playingIn.set(pickSurface()); playing.set(true) }, 80)
+  const began = Date.now()
+  // Timers, not requestAnimationFrame, so this still fires when the window is in the background.
+  const attempt = () => {
+    if (playing.get()) return
+    const id = pickSurface()
+    if (id != null) return startIn(id)
+    if (Date.now() - began < 1500) return void setTimeout(attempt, 60)
+    if (manual) startIn(null)
+    else pendingAuto = true
+  }
+  setTimeout(attempt, 80)
 }
+const play = () => start(true)
+const playAuto = () => start(false)
 const stopWake = () => { playing.set(false); playingIn.set(null) }
 
 function update(patch) {
@@ -188,6 +206,8 @@ function SurfaceWake() {
   useEffect(() => {
     const me = id.current
     surfaces.set(me, () => anchor.current?.closest('[data-chat-surface]') || null)
+    // A new chat asked for a wake before this surface existed: it plays here, once the box is on screen.
+    if (pendingAuto && !playing.get()) setTimeout(() => { if (pendingAuto && !playing.get() && surfaces.get(me)?.()) startIn(me) }, 80)
     return () => { surfaces.delete(me); if (playingIn.get() === me) stopWake() }
   }, [])
 
@@ -263,11 +283,12 @@ function preload() {
 function watch(ctx) {
   const atomActive = host.state.activeSessionId
   let prev = atomActive.get()
-  if (prev == null && allowed('launch')) { markPlayed(); play() }      // the app opened on the new-chat screen
+  if (prev == null && allowed('launch')) { markPlayed(); playAuto() }      // the app opened on the new-chat screen
   const stop = atomActive.listen(next => {
     const was = prev
     prev = next
-    if (was != null && next == null && allowed('chat')) { markPlayed(); play() }
+    if (next != null) pendingAuto = false                                  // an old chat was opened instead
+    if (was != null && next == null && allowed('chat')) { markPlayed(); playAuto() }
   })
   ctx.onDispose?.(stop)
 }
