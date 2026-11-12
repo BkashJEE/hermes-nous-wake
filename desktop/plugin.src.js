@@ -3,9 +3,9 @@
 // build.py, which inlines the three frames (art/frame-*.webp) as data URIs: Desktop evaluates plugin.js
 // from source, so files next to it can't be reached by URL.
 //
-// Trigger: host.state.activeSessionId. A fresh chat draft (sidebar New Session, the session.new keybind,
-// the palette) sets it to null; so does a cold start on the new-chat screen. We play when it goes from a
-// session to null, and once at launch when it starts null.
+// Trigger: every new chat. host.state.activeSessionId going from a session to null, the session.new keybind or
+// palette command (window event hermes:new-session-shortcut), and a click on the sidebar's New Session row;
+// the last two fire even when the screen already shows a fresh draft. Once at launch when it starts null.
 // Surface: the wake plays inside the work window only (the chat surface, not the sidebar). A COMPOSER_AREAS.top
 // slot lives inside every chat surface; from there we read the surface's box (the documented [data-chat-surface]
 // hook, the same one themes target) and draw a fixed overlay exactly over it. A new chat waits for its surface
@@ -279,18 +279,45 @@ function preload() {
   for (const src of Object.values(FRAMES)) { try { const i = new Image(); i.src = src; i.decode?.().catch(() => {}) } catch {} }
 }
 
-// Watch the active session from the plugin itself (not a component): a fresh chat draft sets it to null.
+// Watch for a new chat from the plugin itself (not a component). Three signals, because the active session
+// only changes when you leave an old chat: (1) host.state.activeSessionId going from a session to null;
+// (2) the session.new keybind / palette command, which the app announces as a window event; (3) a click on
+// the sidebar's New Session row or a date divider's "+", caught at the capture phase so it fires even when
+// the screen already shows a fresh draft (clicking New Session twice in a row wakes her twice).
+// One guard window keeps a click and its own session change from playing her twice.
+let lastWake = 0
+function wakeNow() {
+  const now = Date.now()
+  if (now - lastWake < 1200 || playing.get()) return
+  lastWake = now
+  markPlayed(); playAuto()
+}
+function isNewSessionControl(target) {
+  const el = target instanceof Element ? target.closest('button,[role="button"],a') : null
+  if (!el) return false
+  if (el.querySelector('[data-tour="sidebar-nav-new-session"]')) return true
+  const label = (el.getAttribute('aria-label') || '').trim().toLowerCase()
+  return label === 'new session'
+}
 function watch(ctx) {
   const atomActive = host.state.activeSessionId
   let prev = atomActive.get()
-  if (prev == null && allowed('launch')) { markPlayed(); playAuto() }      // the app opened on the new-chat screen
+  if (prev == null && allowed('launch')) wakeNow()                          // the app opened on the new-chat screen
   const stop = atomActive.listen(next => {
     const was = prev
     prev = next
     if (next != null) pendingAuto = false                                  // an old chat was opened instead
-    if (was != null && next == null && allowed('chat')) { markPlayed(); playAuto() }
+    if (was != null && next == null && allowed('chat')) wakeNow()
   })
-  ctx.onDispose?.(stop)
+  const onShortcut = () => { if (allowed('chat')) wakeNow() }
+  const onClick = e => { if (allowed('chat') && isNewSessionControl(e.target)) wakeNow() }
+  window.addEventListener('hermes:new-session-shortcut', onShortcut)
+  document.addEventListener('click', onClick, true)
+  ctx.onDispose?.(() => {
+    stop()
+    window.removeEventListener('hermes:new-session-shortcut', onShortcut)
+    document.removeEventListener('click', onClick, true)
+  })
 }
 
 export default {

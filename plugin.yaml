@@ -1,5 +1,5 @@
 name: hermes-nous-wake
-version: "0.1.2"
+version: "0.1.3"
 manifest_version: 2
 api_version: 1
 description: "The Nous girl wakes up when you start a new Hermes chat: a three-second moment inside the chat window where she opens her eyes, blinks once and fades into the chat, drawn in the black-and-white Nous manga ink style. Choose every new chat, the first chat of the day, app launch only, or off (Settings ▸ Plugins ▸ Nous Wake); replay it from the status-bar eye or ⌘K. Click or any key skips it; reduced motion gets a calm fade. Desktop only: no tools, no network, no model calls."
